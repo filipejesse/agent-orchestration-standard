@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0e17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AOS">
+<title>AOS · mobile</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%236d5efc'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E">
+<script>/* same saved theme as the full dashboard (AUTO = no attribute) */
+try{var t=localStorage.getItem('aos.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<link rel="stylesheet" href="theme.css?v=24">
+<link rel="stylesheet" href="m.css?v=1">
+</head>
+<body>
+<header class="m-top">
+  <div class="m-brand"><i class="m-logo" aria-hidden="true"></i><h1>AOS-1</h1></div>
+  <div id="m-live" class="m-live" role="status" aria-live="polite"><i></i><span>Connecting…</span></div>
+  <button id="m-theme" class="m-icon" type="button" aria-label="Theme"></button>
+</header>
+
+<main class="m-main">
+  <section class="m-tiles" aria-label="Totals">
+    <div class="m-tile"><span class="m-k">Running</span><b id="m-running" class="tnum">–</b></div>
+    <div class="m-tile"><span class="m-k">Tokens</span><b id="m-tokens" class="tnum">–</b></div>
+    <div class="m-tile"><span id="m-cost-k" class="m-k">Cost</span><b id="m-cost" class="tnum">–</b></div>
+  </section>
+
+  <section id="m-attn" class="m-attn" aria-label="Needs attention" hidden>
+    <h2 class="m-h">Needs attention</h2>
+    <ul id="m-attn-list" class="m-attn-list"></ul>
+  </section>
+
+  <nav id="m-machines" class="m-chips" aria-label="Machines" hidden></nav>
+
+  <div class="m-seg" role="tablist" aria-label="Show">
+    <button type="button" role="tab" data-f="active">Active</button>
+    <button type="button" role="tab" data-f="all">All</button>
+  </div>
+
+  <div id="m-projects" class="m-projects" aria-live="off">
+    <p class="m-empty">Loading…</p>
+  </div>
+
+  <details id="m-alerts" class="m-alerts">
+    <summary><span class="m-h">Recent alerts</span><span id="m-alerts-n" class="m-n tnum"></span></summary>
+    <ul id="m-alerts-list"></ul>
+  </details>
+</main>
+
+<footer class="m-foot">
+  <span id="m-updated" class="tnum"></span>
+  <a href="./?full=1">Full dashboard →</a>
+</footer>
+<script src="m.js?v=1"></script>
+</body>
+</html>

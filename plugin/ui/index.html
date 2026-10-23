@@ -9,6 +9,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%236d5efc'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E">
 <script>/* no-flash theme: apply the saved choice before first paint (AUTO = no attribute) */
 try{var t=localStorage.getItem('aos.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script>/* phones get the list view (m.html); ?full=1 keeps this dashboard */
+try{if(!/[?&]full=1(&|$)/.test(location.search)&&matchMedia('(max-width:720px) and (pointer:coarse)').matches)location.replace('m.html')}catch(e){}</script>
 <link rel="stylesheet" href="styles.css?v=11">
 <link rel="stylesheet" href="theme.css?v=24">
 <link rel="stylesheet" href="global.css?v=4">

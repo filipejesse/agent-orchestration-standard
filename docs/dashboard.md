@@ -71,6 +71,12 @@ When a session starts in one of those repos, the hook records the repo's `HEAD` 
 
 Remove the `guard` key (or the repo from `repos`) to turn it off.
 
+## Mobile view
+
+On a phone the graph is hard to read, so `/m.html` shows the same `/api/state` as a list: totals (running, new tokens, cost), a *Needs attention* block (errored and stalled agents, and needs-input alerts the agent has not moved past), machine chips when the cross-machine view is on, an Active / All filter, then one card per project with its agents. Tap an agent for its tokens, rate, cost, recent tools and files. It polls every 3 s while the tab is visible, follows the saved theme and is read-only like the rest.
+
+`index.html` sends phones there automatically (narrow screen **and** a touch pointer, so a narrow desktop window keeps the full view). *Full dashboard →* at the bottom opens `/?full=1`, which skips the redirect. The monitor only listens on 127.0.0.1; to reach it from a phone you need something in front of it (an authenticated proxy on your LAN or Tailscale), which this repo does not ship.
+
 ## Debugging
 
 Open http://127.0.0.1:4318/?debug=1 to show a small on-screen recorder (`ui/debug.js`) that logs layout, canvas, visibility and frame-rate changes with Copy/Clear buttons. It is inert without the flag and never changes the page.
