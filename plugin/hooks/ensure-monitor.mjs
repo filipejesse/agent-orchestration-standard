@@ -96,6 +96,7 @@ async function main() {
     const child = spawn(process.execPath, [entry], {
       detached: true,
       stdio: 'ignore',
+      windowsHide: true, // detached on Windows otherwise opens a console window for the monitor
       env: { ...process.env, AOS_LIVE_DIR: LIVE, PORT: String(PORT) },
     });
     child.on('error', () => {});

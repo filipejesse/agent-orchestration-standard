@@ -123,7 +123,7 @@
   function isLive() { return !!(state && state.mode === 'live'); }
   /* agent ids look like "Claude Code·912b": name before the middle dot, short id after it */
   function splitId(id) {
-    var s = String(id || ''), i = s.lastIndexOf('·');
+    var s = String(id || ''), i; if (window.AosMachines) s = AosMachines.strip(s); i = s.lastIndexOf('·');
     if (i < 0) return { name: s.replace(/^agent[-_]/, ''), short: '' };
     return { name: s.slice(0, i).trim(), short: s.slice(i + 1).trim() };
   }
@@ -852,6 +852,7 @@
     sv('circle', { 'class': 'tint' }, g);
     sv('circle', { 'class': 'led', cx: 0, cy: 0, r: 2 }, g);
     sv('path', { 'class': 'collmark', d: 'M0,-4.6L4.6,0L0,4.6L-4.6,0Z' }, g);
+    sv('circle', { 'class': 'guardmark', cx: 0, cy: 0, r: 3.6 }, g); /* guard verdict (ui/guard.js): shown via the g-* node class */
     sv('text', { 'class': 'name' }, g);
     var sb = sv('text', { 'class': 'sub' }, g);
     sv('tspan', { 'class': 'sid' }, sb); sv('tspan', { 'class': 'st' }, sb); sv('tspan', { 'class': 'ns' }, sb);
@@ -918,11 +919,15 @@
       if (n.kind === 'agent') updAgent(n); else if (n.kind === 'hub') updHub(n);
     });
   }
+  /* guard verdict on a session (monitor `agent.guard`): verified | integrity | capability; text from ui/guard.js when loaded */
+  function guardSt(a) { var v = a.guard && a.guard.verdict; return v === 'verified' || v === 'integrity' || v === 'capability' ? v : 'none'; }
+  function guardTxt(a) { return window.AOSGuard ? AOSGuard.badge(a.guard).text : guardSt(a); }
   function clsSet(g, c) { if (g._cls !== c) { g._cls = c; g.setAttribute('class', c); } }
   function updAgent(n) {
     var a = n.a, g = n.el, R = orbR(a) + (a.status === 'running' ? 2 : 0), sp = splitId(a.id), ml = a.model_label ? String(a.model_label) : '', cl = collOf(a.id);
-    clsSet(g, 'node agent s-' + a.status + (selected === a.id ? ' sel' : '') + (g.classList.contains('flash') ? ' flash' : '') + (g.classList.contains('enter') ? ' enter' : '') + (a.stuck ? ' stuck' : '') + (cl.length ? ' coll' : ''));
+    clsSet(g, 'node agent s-' + a.status + (selected === a.id ? ' sel' : '') + (g.classList.contains('flash') ? ' flash' : '') + (g.classList.contains('enter') ? ' enter' : '') + (a.stuck ? ' stuck' : '') + (cl.length ? ' coll' : '') + (a.guard ? ' g-' + guardSt(a) : ''));
     setPos(g.querySelector('.collmark'), -(orbR(a) + 8) * 0.72, -(orbR(a) + 8) * 0.72);
+    setPos(g.querySelector('.guardmark'), (orbR(a) + 8) * 0.72, -(orbR(a) + 8) * 0.72);
     setA(g.querySelector('.halo'), 'r', R + 14); setA(g.querySelector('.av'), 'r', R + 9); setA(g.querySelector('.card'), 'r', R + 6);
     setA(g.querySelector('.tint'), 'r', R); setA(g.querySelector('.focus-ring'), 'r', R + 12);
     var m = n.m, mt = g.querySelector('text.model'), R1 = orbR(a) + 2, fam = /opus/i.test(ml) ? 'opus' : /sonnet/i.test(ml) ? 'sonnet' : /haiku/i.test(ml) ? 'haiku' : 'other';
@@ -931,7 +936,7 @@
     setT(g.querySelector('tspan.st'), nsT && !m.hasM ? nsT : trunc(human(a.status), 8));
     if (nsT && m.hasM) { clsSet(mt, 'model nosig fam-' + fam); setT(mt.querySelector('tspan.dot'), ''); setT(mt.querySelector('tspan.mt'), nsT); setT(nsEl, ''); }
     else { clsSet(mt, 'model fam-' + fam); setT(mt.querySelector('tspan.dot'), ml ? '● ' : ''); setT(mt.querySelector('tspan.mt'), trunc(ml.toUpperCase(), 16)); setT(nsEl, ''); }
-    var al = 'Agent ' + a.id + ', ' + a.status + (a.stuck ? ', no signal for ' + fmtCompact(a.stuck_for_s) : '') + (cl.length ? ', file conflict ' + cl[0].name : '') + (toolName(a) ? ', using ' + toolName(a) : '') + (ml ? ', model ' + ml : '') + (a.current_task ? ', working on ' + a.current_task : '') + '. Open details.';
+    var al = 'Agent ' + a.id + ', ' + a.status + (a.stuck ? ', no signal for ' + fmtCompact(a.stuck_for_s) : '') + (cl.length ? ', file conflict ' + cl[0].name : '') + (a.guard ? ', guard ' + guardTxt(a) : '') + (toolName(a) ? ', using ' + toolName(a) : '') + (ml ? ', model ' + ml : '') + (a.current_task ? ', working on ' + a.current_task : '') + '. Open details.';
     if (g.getAttribute('aria-label') !== al) g.setAttribute('aria-label', al);
     /* task chip */
     var ct = m.hasT ? taskLineFor(a) : null, c = chips[a.id];
@@ -1044,7 +1049,7 @@
     ag.forEach(function (a) { if (!sticky[a.id] && taskLineFor(a)) sticky[a.id] = 1; });
     SYNC = { added: [], hard: false };
     var setChanged = syncNodes(MODEL);
-    $('empty').hidden = ag.length > 0; if (!ag.length) $('empty').textContent = 'No crew registered.';
+    $('empty').hidden = ag.length > 0; if (!ag.length) $('empty').textContent = 'Waiting for your first Claude Code session — start one in any project and it appears here.';
     var sig = sigOf(MODEL), first = WD.fit < 0;
     if (sig !== SIG || first) {
       var szKey = [L.mobile ? 'm' : 'd', applied.w, applied.h].join('|'), sizeChanged = szKey !== SIGZ;
@@ -1224,9 +1229,10 @@
       return [p.name, cnt(p.agents.length, 'agent', 'agents') + ' · ' + hs.running + ' running' + (hs.stalled ? ' · ' + hs.stalled + ' stalled' : '') + (hs.errored ? ' · ' + hs.errored + ' errored' : '') + (rt != null ? ' · ran ' + fmtRan(rt) : '')];
     }
     var a = agentById(id), ml = a && a.model_label ? String(a.model_label) : '', tn = toolName(a), t = a && a.current_tool, rn = a ? ranTxt(a) : '';
-    if (!a || (!tn && !ml && !rn)) return null;
+    if (!a || (!tn && !ml && !rn && !a.guard)) return null;
     if (a.model_mismatch) ml = (ml || 'model') + ' (asked ' + a.requested_tier + ')';
     if (a.out_of_scope) ml = (ml ? ml + ' · ' : '') + 'OUT OF SCOPE';
+    if (a.guard) ml = (ml ? ml + ' · ' : '') + 'GUARD: ' + guardTxt(a).toUpperCase();
     return [tn ? tn + (t && t.summary ? ' · ' + trunc(baseName(t.summary), 44) : '') : 'no active tool', (ml || '') + (rn ? (ml ? ' · ' : '') + rn : '')];
   }
   function showTip(g, id) {
@@ -1536,9 +1542,10 @@
       var p = el('p', 'dr-pills'); p.appendChild(pill(a.status));
       if (a.model_mismatch) { var mb = el('span', 'tag mm-badge', 'asked ' + a.requested_tier + ', got ' + (a.model_label || a.model || '?')); mb.title = 'The orchestrator requested the ' + a.requested_tier + ' tier for this task but a different model was served'; p.appendChild(mb); }
       if (a.out_of_scope) { var sb = el('span', 'tag oos-badge', 'out of scope'); sb.title = 'An attempt at this task changed files outside its declared path_scope and was rejected by the orchestrator'; p.appendChild(sb); }
+      if (window.AOSGuard && AOSGuard.badgeEl) { var gb = AOSGuard.badgeEl(a, state); if (gb) p.appendChild(gb); }
       body.appendChild(p);
       if (a.role) { var rp = el('p', null, a.role); rp.style.overflowWrap = 'anywhere'; body.appendChild(rp); }
-      kv(body, [['Full id', a.id]].concat(a.model_label ? [['Model', a.model_label + (a.model && a.model !== a.model_label ? ' (' + a.model + ')' : '')]] : [], [['Current task', a.current_task || 'none'], ['Can delegate', a.can_delegate ? 'yes' : 'no'], ['Last event', fmtTs(a.last_event_at) || 'n/a']]));
+      kv(body, [['Full id', a.id]].concat(a.machine ? [['Machine', a.machine]] : []).concat(a.model_label ? [['Model', a.model_label + (a.model && a.model !== a.model_label ? ' (' + a.model + ')' : '')]] : [], [['Current task', a.current_task || 'none'], ['Can delegate', a.can_delegate ? 'yes' : 'no'], ['Last event', fmtTs(a.last_event_at) || 'n/a']]));
       toolFeed(body, a);
       if ((a.capabilities || []).length) { section(body, 'Capabilities'); var c = el('div'); a.capabilities.forEach(function (x) { c.appendChild(el('span', 'tag', x)); }); body.appendChild(c); }
       section(body, 'Tasks');
@@ -1621,6 +1628,7 @@
   }
   var liveState = null, override = null, subs = [];
   function applyState(s, fromPoll) {
+    if (window.AosMachines) { try { AosMachines.render(s); s = AosMachines.filter(s); } catch (e0) { if (window.console) console.error(e0); } }
     prev = fromPoll ? state : null; state = s;
       try { render(); diff(); if (fromPoll && window.AosFx) AosFx.onState(state, prev); }
       catch (err) {
@@ -1630,6 +1638,7 @@
   }
   window.AosApp = {
     getState: function () { return state; },
+    refresh: function () { var r = override || liveState; if (r) applyState(r, false); },
     setOverride: function (s) {
       if (s) { override = s; applyState(s, false); }
       else { override = null; if (liveState) applyState(liveState, false); }

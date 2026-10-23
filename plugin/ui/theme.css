@@ -459,6 +459,9 @@ table.ev{font-size:13px}
 .agent .model.nosig .mt{fill:var(--stalled);opacity:.75}
 .node .collmark{display:none;fill:var(--stalled);stroke:var(--bg);stroke-width:1.2;pointer-events:none}
 .node.coll .collmark{display:block}
+.node .guardmark{display:none;stroke:var(--bg);stroke-width:1.2;pointer-events:none}
+.node.g-verified .guardmark,.node.g-integrity .guardmark,.node.g-capability .guardmark{display:block}
+.node.g-verified .guardmark{fill:var(--running)}.node.g-integrity .guardmark{fill:var(--errored)}.node.g-capability .guardmark{fill:var(--stalled)}
 .orch.stuck .sub{fill:var(--stalled)}
 .tf-warn,.tf-conflict{font:600 10.5px/1.5 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--stalled);margin:0 0 6px!important;overflow-wrap:anywhere}
 .tf-warn{opacity:.8}

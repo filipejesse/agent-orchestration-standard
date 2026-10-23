@@ -1,0 +1,158 @@
+[
+ {
+  "id": "t1",
+  "goal_id": "g-integ",
+  "title": "Write a.txt",
+  "assignee": "worker-t1",
+  "status": "done",
+  "depends_on": [],
+  "attempts": 2,
+  "max_attempts": 3,
+  "output_contract": "a.txt holds alpha",
+  "acceptance": [
+   "a.txt holds alpha"
+  ],
+  "artifacts": [
+   {
+    "type": "commit",
+    "sha": "4da05fc56c926b6687a1c2194adcd7fbdf1a4772",
+    "branch": "aos/g-integ/t1"
+   }
+  ],
+  "created_at": "2026-10-20T16:02:24.216Z",
+  "updated_at": "2026-10-20T16:02:24.888Z",
+  "orch": {
+   "description": "Create a.txt",
+   "model_tier": "sonnet",
+   "tier_ladder": [
+    "haiku",
+    "sonnet",
+    "opus"
+   ],
+   "path_scope": [
+    "a.txt"
+   ],
+   "read_scope": [
+    "**"
+   ],
+   "allowed_tools": [
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep",
+    "Bash"
+   ],
+   "allowed_commands": [],
+   "checks": [
+    {
+     "argv": [
+      "node",
+      "-e",
+      "const s=require('fs').readFileSync(\"a.txt\",'utf8').trim();if(s!==\"alpha\"){console.error('CHECKFAIL '+\"a.txt\"+' has '+JSON.stringify(s));process.exit(1)}"
+     ],
+     "timeout_s": 30
+    }
+   ],
+   "branch": "aos/g-integ/t1",
+   "worktree": null,
+   "phase": null,
+   "attempt_log": [
+    {
+     "n": 1,
+     "tier": "haiku",
+     "session_id": "6b1e4d9b-9876-48be-b4c4-ca47f0b5ed1a",
+     "started_at": "2026-10-20T16:02:24.284Z",
+     "ended_at": "2026-10-20T16:02:24.433Z",
+     "outcome": "tests_weakened",
+     "denials": 0,
+     "new_tokens": 4506,
+     "exit_code": 0,
+     "counted": true,
+     "accounted": true,
+     "notional_usd": 0.008906,
+     "collected": true,
+     "checks_ok": true,
+     "claude_version": "2.1.100 (Claude Code)",
+     "self_checks": {
+      "runs": 2,
+      "capped": 0,
+      "ms": 120,
+      "output_bytes": 300,
+      "max": 5
+     },
+     "stderr_tail": "Error: worker crashed\n    at /Users/someone/secret/path/x.js:1\n<img src=x onerror=alert(1)>",
+     "anticheat": {
+      "status": "fail",
+      "failed": "tests_weakened",
+      "findings": [
+       {
+        "kind": "tests_weakened",
+        "severity": "fail",
+        "path": "test/a.test.mjs",
+        "detail": "dropped 2 assertions"
+       },
+       {
+        "kind": "vacuous_pass",
+        "severity": "warn",
+        "detail": "x"
+       }
+      ],
+      "tests": []
+     }
+    },
+    {
+     "n": 2,
+     "tier": "sonnet",
+     "session_id": "8adfc56e-69e4-440b-82b9-0535c3c633d6",
+     "started_at": "2026-10-20T16:02:24.591Z",
+     "ended_at": "2026-10-20T16:02:24.717Z",
+     "outcome": "success",
+     "denials": 0,
+     "new_tokens": 4506,
+     "exit_code": 0,
+     "counted": true,
+     "accounted": true,
+     "notional_usd": 0.008906,
+     "collected": true,
+     "checks_ok": true,
+     "claude_version": "2.1.101 (Claude Code)",
+     "self_checks": {
+      "runs": 1,
+      "capped": 0,
+      "ms": 50,
+      "output_bytes": 100,
+      "max": 5
+     },
+     "anticheat": {
+      "status": "warn",
+      "failed": null,
+      "findings": [
+       {
+        "kind": "literal_copy",
+        "severity": "warn",
+        "detail": "y"
+       }
+      ],
+      "tests": []
+     }
+    }
+   ],
+   "grants": [],
+   "result_summary": "Task completed as scripted.",
+   "tokens": {
+    "new": 9012,
+    "cache_read": 28000
+   },
+   "denial_retries": 0,
+   "note": null,
+   "worker_seq": 2,
+   "last_failure": {
+    "kind": "check_failed",
+    "note": null,
+    "check_output": "CHECKFAIL a.txt has \"wrong 1\"\n",
+    "denials": []
+   }
+  }
+ }
+]

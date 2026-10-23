@@ -1,5 +1,6 @@
 /* AOS-1 goals UI (orch.js). Tokens only; overlay panel, never changes graph layout. */
 .orch-hbtn{all:unset;box-sizing:border-box;flex:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 4px;border-radius:3px;font:600 11.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);transition:color .15s,background .15s;position:relative}
+.orch-hbtn[hidden],.orch-needs[hidden]{display:none}
 .orch-hbtn:hover,.orch-hbtn.on{color:var(--accent-hi);background:var(--hover)}
 .orch-hbtn:focus-visible{outline:1px solid var(--accent-hi);outline-offset:1px}
 .orch-n{font-weight:700;color:var(--text);letter-spacing:.04em}
@@ -144,3 +145,42 @@ fieldset.orch-field{border:0;padding:0;margin:0;min-width:0}
 .orch-critwrap{margin-bottom:6px}.orch-critwrap .orch-critrow{margin-bottom:2px}
 .orch-critmeta{font:11px var(--mono);color:var(--text-2);overflow-wrap:anywhere}.orch-critmeta[data-crit-meta=human]{color:var(--stalled)}
 .orch-draft{border:1px dashed var(--line-2);padding:8px;border-radius:6px}.orch-draftq{margin:2px 0 6px;padding-left:18px;font-size:12px;color:var(--text-2)}
+
+/* integrity (anti-cheat) badges: read-only */
+.orch-integ{font:700 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:2px 5px;border-radius:2px;border:1px solid var(--line-2);color:var(--text-2)}
+.orch-integ-warning{color:var(--stalled);border-color:rgb(var(--stalled-rgb)/.6)}
+.orch-integ-failed{color:var(--errored);border-color:rgb(var(--errored-rgb)/.7)}
+.orch-tr3,.orch-integrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+.orch-reason{font:600 10px/1 var(--mono);letter-spacing:.04em;color:var(--text-2);border:1px dashed var(--line-2);padding:2px 5px;border-radius:2px}
+.orch-selfchk{font:500 10.5px/1 var(--mono);color:var(--text-2)}
+.orch-vwarn{font:700 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--stalled);border:1px solid rgb(var(--stalled-rgb)/.6);padding:2px 5px;border-radius:2px}
+.orch-fold{margin-top:4px;font:500 11px/1.4 var(--mono);color:var(--text-2)}
+.orch-fold summary{cursor:pointer}
+.orch-pre{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:12em;overflow:auto;font:inherit}
+.orch-werr .orch-pre{color:rgb(var(--errored-rgb))}
+
+/* GUARD view (ui/guard.js): verified = accent, integrity rejection = errored (red), capability rejection = stalled (amber); theme tokens only */
+.guard-hbtn[hidden],.guard-dot[hidden]{display:none!important}
+.guard-dot{width:7px;height:7px;border-radius:50%;background:rgb(var(--errored-rgb));box-shadow:0 0 0 2px var(--bg)}
+.guard-chip,.guard-badge{font:700 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:3px 5px;border-radius:2px;border:1px solid var(--line-2);color:var(--muted);background:none}
+.guard-badge{margin:0 0 0 8px}
+button.guard-badge{cursor:pointer}
+button.guard-badge:focus-visible{outline:1px solid var(--accent-hi);outline-offset:2px}
+.g-verified.guard-chip,.g-verified.guard-badge{color:var(--running);border-color:rgb(var(--running-rgb)/.6)}
+.g-integrity.guard-chip,.g-integrity.guard-badge{color:var(--bg);background:rgb(var(--errored-rgb));border-color:rgb(var(--errored-rgb))}
+.g-capability.guard-chip,.g-capability.guard-badge{color:var(--stalled);border-color:rgb(var(--stalled-rgb)/.6)}
+.guard-list,.guard-l{list-style:none;margin:0;padding:0}
+.guard-v{padding:10px 4px 10px 8px;border-bottom:1px solid var(--line);border-left:2px solid transparent;outline:none}
+.guard-v.g-integrity{border-left-color:rgb(var(--errored-rgb))}.guard-v.g-capability{border-left-color:rgb(var(--stalled-rgb))}
+.guard-v.focus{background:var(--hover)}
+.guard-r1{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.guard-repo{flex:1 1 120px;min-width:0;color:var(--text);font-weight:600;overflow-wrap:anywhere}
+.guard-meta{margin-top:3px;font-size:10.5px;letter-spacing:.04em;color:var(--muted);overflow-wrap:anywhere}
+.guard-h{margin:8px 0 2px;font:600 9.5px/1.6 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.guard-l li{font-size:11px;line-height:1.45;color:var(--text-2);overflow-wrap:anywhere;padding:1px 0}
+.guard-k{color:var(--text);font-weight:700}
+.guard-reasons li::before,.guard-failing li::before{content:"\2717  ";color:rgb(var(--errored-rgb))}
+.guard-warn li::before{content:"!  ";color:var(--stalled)}
+.guard-checks li.ok .guard-res{color:var(--running)}.guard-checks li.bad .guard-res{color:rgb(var(--errored-rgb))}
+.guard-cmd{font:inherit;color:var(--text)}
+@media (max-width:720px){.guard-hbtn{order:2;min-height:36px}button.guard-badge{min-height:36px;padding:0 10px}.guard-v{padding:12px 4px 12px 8px}}

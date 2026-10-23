@@ -4,7 +4,8 @@
       {
         "hooks": [
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-hook.mjs\"", "async": true },
-          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/ensure-monitor.mjs\"", "async": true }
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/ensure-monitor.mjs\"", "async": true },
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-guard.mjs\"", "async": true }
         ]
       }
     ],
@@ -24,7 +25,10 @@
       { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-hook.mjs\"", "async": true } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-hook.mjs\"", "async": true } ] }
+      { "hooks": [
+        { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-hook.mjs\"", "async": true },
+        { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-guard.mjs\"", "async": true }
+      ] }
     ],
     "SessionEnd": [
       { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/aos-hook.mjs\"", "async": true } ] }

@@ -215,7 +215,7 @@
   function buildHeaderBtn() {
     var top = document.querySelector('header.top'), theme = $('theme-btn');
     if (!top) return;
-    var b = el('button', 'orch-hbtn'); b.type = 'button'; b.id = 'orch-btn';
+    var b = el('button', 'orch-hbtn'); b.type = 'button'; b.id = 'orch-btn'; b.hidden = true;
     b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', 'orch-panel'); b.setAttribute('aria-haspopup', 'dialog');
     b.appendChild(document.createTextNode('Goals'));
     R.n = el('b', 'orch-n tnum', '0'); b.appendChild(R.n);
@@ -235,21 +235,35 @@
   }
   function setNeedsOpen(on) { if (!R.needsPop) return; R.needsPop.hidden = !on; R.needs.setAttribute('aria-expanded', String(!!on)); if (on) renderNeeds(); }
   function renderNeeds() {
-    var nd = window.AOSNeeds.compute(goalList()), pop = R.needsPop; clear(pop);
+    var nd = window.AOSNeeds.compute(orchOn() ? goalList() : [], verdictSum), pop = R.needsPop; clear(pop);
     nd.items.forEach(function (it) {
       var b = el('button', 'orch-needs-it'); b.type = 'button'; b.setAttribute('data-id', it.id); b.setAttribute('data-kind', it.kind);
       b.appendChild(el('span', 'orch-needs-t', clip(it.title, 80))); b.appendChild(el('span', 'orch-needs-w', it.text));
-      b.addEventListener('click', function () { setNeedsOpen(false); if (!panelOpen) openPanel(); goDetail(it.id); });
+      b.addEventListener('click', function () { setNeedsOpen(false); if (it.kind === 'integrity') { if (window.AOSGuard && window.AOSGuard.open) window.AOSGuard.open(it.id); return; } if (!panelOpen) openPanel(); goDetail(it.id); });
       pop.appendChild(b);
     });
   }
+  /* the orchestrator UI (GOALS button, Needs you badge) only shows for users who have it: at least one goal, or the control server answers /api/health */
+  var ctlUp = false, presTimer = null;
+  function orchOn() { return goalList().length > 0 || ctlUp; }
+  function checkPresence() {
+    var ac = window.AbortController ? new AbortController() : null, to = ac ? setTimeout(function () { ac.abort(); }, 3000) : null;
+    fetch(CTRL + '/api/health', { cache: 'no-store', credentials: 'omit', mode: 'cors', signal: ac ? ac.signal : undefined })
+      .then(function () { return true; }, function () { return false; })
+      .then(function (up) { if (to) clearTimeout(to); if (up !== ctlUp) { ctlUp = up; updateHeader(); } });
+  }
+  function startPresence() { checkPresence(); if (!presTimer) presTimer = setInterval(checkPresence, 30000); }
   function updateHeader() {
     if (!R.hbtn) return;
+    var on = orchOn(); R.hbtn.hidden = !on;
+    /* Needs you also carries guard integrity rejections, so it can show without any goal */
+    var nd = window.AOSNeeds ? window.AOSNeeds.compute(on ? goalList() : [], verdictSum) : { total: 0 };
+    if (!on) { if (panelOpen) closePanel(); }
+    if (R.needs) { R.needs.hidden = nd.total <= 0; R.needsN.textContent = String(nd.total); R.needs.setAttribute('aria-label', 'Needs you: ' + nd.total + (nd.total === 1 ? ' item' : ' items') + ' waiting on you'); if (nd.total <= 0) setNeedsOpen(false); else if (!R.needsPop.hidden) renderNeeds(); }
+    if (!on) return;
     var n = activeCount(), p = pendingCount();
     R.n.textContent = n + ' active'; R.dot.hidden = p <= 0;
     R.hbtn.setAttribute('aria-label', 'Goals: ' + n + ' active' + (p > 0 ? ', ' + p + ' approval' + (p === 1 ? '' : 's') + ' pending' : '') + (panelOpen ? '. Close goals panel' : '. Open goals panel'));
-    var nd = window.AOSNeeds ? window.AOSNeeds.compute(goalList()) : { total: 0 };
-    if (R.needs) { R.needs.hidden = nd.total <= 0; R.needsN.textContent = String(nd.total); R.needs.setAttribute('aria-label', 'Needs you: ' + nd.total + (nd.total === 1 ? ' item' : ' items') + ' waiting on you'); if (nd.total <= 0) setNeedsOpen(false); else if (!R.needsPop.hidden) renderNeeds(); }
     R.hbtn.classList.toggle('on', panelOpen); R.hbtn.setAttribute('aria-expanded', String(panelOpen));
   }
 
@@ -273,7 +287,7 @@
     R.vList = el('div', 'orch-view'); R.vDetail = el('div', 'orch-view'); R.vForm = el('div', 'orch-view');
     R.body.appendChild(R.vList); R.body.appendChild(R.vDetail); R.body.appendChild(R.vForm);
     R.sNew = sect(R.vList, 'new'); R.sInbox = sect(R.vList, 'inbox'); R.sList = sect(R.vList, 'list');
-    var names = ['head', 'ctl', 'plan', 'appr', 'crit', 'rules', 'budget', 'dag', 'tasks', 'events'];
+    var names = ['head', 'ctl', 'plan', 'appr', 'crit', 'rules', 'budget', 'integ', 'dag', 'tasks', 'events'];
     R.d = {}; names.forEach(function (n) { R.d[n] = sect(R.vDetail, n); });
     buildForm();
 
@@ -313,6 +327,7 @@
 
   function openPanel() {
     if (panelOpen) return;
+    safe(function () { if (window.AOSGuard && window.AOSGuard.close) window.AOSGuard.close(); }); /* one side panel at a time */
     if (!R.panel) buildPanel();
     panelOpen = true; lastFocus = document.activeElement;
     if (token && ctl.st !== 'ok') ctl.st = 'connecting';
@@ -450,6 +465,19 @@
     c.title = 'Rule set ' + clip(r.hash, 12) + (r.legacy ? ' (legacy goal)' : '') + (dr ? '; ' + dr + ' repo loosening' + (dr === 1 ? '' : 's') + ' not applied' : '');
     return c;
   }
+  /* integrity (anti-cheat) badges, read-only. Data: GoalSummary.integrity {status,failed_attempts,warning_attempts,kinds}, tasks[].integrity {status,reasons[]},
+     tasks[].attempt_log[]. Everything is set with textContent; unknown/missing fields render nothing (old goals). */
+  var INTEG_OK = { clean: 1, warning: 1, failed: 1 };
+  function integChip(st, label) {
+    st = INTEG_OK[st] ? st : 'clean';
+    var c = el('span', 'orch-integ orch-integ-' + st, label || ('integrity: ' + st)); c.setAttribute('data-integrity', st); return c;
+  }
+  function reasonChips(parent, reasons) {
+    arr(reasons).slice(0, 8).forEach(function (k) { var c = el('span', 'orch-reason', clip(String(k).replace(/_/g, ' '), 40)); c.setAttribute('data-reason', String(clip(k, 40))); parent.appendChild(c); });
+  }
+  function textDetails(label, text, cls) {
+    var d = el('details', 'orch-fold ' + (cls || '')); d.appendChild(el('summary', null, label)); d.appendChild(el('pre', 'orch-pre', clip(text, 2000))); return d;
+  }
   function goalRow(g) {
     var li = el('li'); var b = el('button', 'orch-goal'); b.type = 'button'; b.setAttribute('data-id', String(g.id));
     b.setAttribute('aria-label', 'Open goal: ' + clip(g.title, 120) + ', ' + (G_ST[g.status] ? g.status : 'unknown'));
@@ -460,6 +488,7 @@
     var r2 = el('span', 'orch-r2');
     if (g.repo_name) r2.appendChild(el('span', 'orch-repo', clip(g.repo_name, 80)));
     if (isObj(g.rules)) r2.appendChild(rulesChip(g.rules));
+    if (isObj(g.integrity) && g.integrity.checked && g.integrity.status !== 'clean') r2.appendChild(integChip(g.integrity.status));
     var td = num(g.tasks_done), tt = num(g.tasks_total);
     var pr = el('span', 'orch-prog tnum', td + '/' + tt + ' tasks'); pr.setAttribute('data-prog', td + '/' + tt); r2.appendChild(pr);
     if (num(g.tasks_failed) > 0) r2.appendChild(el('span', 'orch-failed tnum', g.tasks_failed + ' failed'));
@@ -533,7 +562,7 @@
     if (!g) {
       var msg = detailErr || (detailLoading ? 'Loading goal…' : 'Goal not found.');
       paint(D.head, 'nf|' + msg, function (s) { s.appendChild(el('p', 'orch-empty', msg)); });
-      ['ctl', 'plan', 'appr', 'crit', 'rules', 'budget', 'dag', 'tasks', 'events'].forEach(function (k) { paint(D[k], 'none', function () {}); });
+      ['ctl', 'plan', 'appr', 'crit', 'rules', 'budget', 'integ', 'dag', 'tasks', 'events'].forEach(function (k) { paint(D[k], 'none', function () {}); });
       return;
     }
     var d = detail && detail.id === g.id ? detail : null;
@@ -596,6 +625,22 @@
     paint(D.budget, JSON.stringify([g.budget, g.outcome]), function (s) {
       label(s, 'Budget'); budgetMeters(s, g.budget); outcomeLine(s, g.outcome);
       var b = g.budget || {}; if (b.max_attempts != null) s.appendChild(el('p', 'orch-muted tnum', 'max attempts per task: ' + num(b.max_attempts)));
+    });
+    paint(D.integ, JSON.stringify([g.integrity, d && d.protected_tests, d && d.review, d && d.claude_version_start]), function (s) {
+      var I = g.integrity; if (!isObj(I) || !d) return;
+      label(s, 'Integrity');
+      var row = el('p', 'orch-integrow'); row.appendChild(integChip(I.status));
+      var kinds = isObj(I.kinds) ? Object.keys(I.kinds).slice(0, 8) : []; reasonChips(row, kinds); s.appendChild(row);
+      if (!I.checked) s.appendChild(el('p', 'orch-muted', 'No anti-cheat data recorded for this goal.'));
+      var pt = d.protected_tests;
+      if (isObj(pt)) {
+        var pl = el('p', 'orch-muted tnum orch-prot', 'protected tests: ' + (pt.ok ? 'passed' : 'FAILED') + ' (' + num(pt.files) + ' file' + (num(pt.files) === 1 ? '' : 's') + (num(pt.not_executed) ? ', ' + num(pt.not_executed) + ' not executed' : '') + ')');
+        pl.setAttribute('data-protected', pt.ok ? 'ok' : 'failed'); s.appendChild(pl);
+        if (!pt.ok && pt.output) s.appendChild(textDetails('protected test output', pt.output, 'orch-err'));
+      }
+      if (d.claude_version_start) s.appendChild(el('p', 'orch-muted tnum', 'claude ' + clip(d.claude_version_start, 40)));
+      var rv = d.review;
+      if (isObj(rv)) s.appendChild(textDetails('Reviewer notes (advisory, model-written, not verified)' + (rv.tier ? ' \u00b7 ' + clip(rv.tier, 20) : ''), rv.error ? 'The advisory review did not complete: ' + rv.error : (rv.text || '(empty)'), 'orch-review'));
     });
     var tasks = arr(d && d.tasks).filter(isObj);
     paint(D.dag, JSON.stringify(tasks.map(function (t) { return [t.id, t.status, t.tier, t.depends_on, t.attempts, t.max_attempts, t.title]; })), function (s) {
@@ -660,9 +705,20 @@
     if (t.out_of_scope) { var os = el('span', 'orch-oos', 'out of scope' + (num(t.scope_violations) > 1 ? ' \u00d7' + t.scope_violations : '')); os.title = 'An attempt changed files outside this task\'s path_scope and was rejected'; r2.appendChild(os); }
     if (t.waiting_for_human) { var w = el('span', 'orch-wait', 'waiting for you' + (t.waiting_s != null ? ' ' + fmtDur(t.waiting_s) : '')); r2.appendChild(w); }
     li.appendChild(r2);
+    var ti = isObj(t.integrity) ? t.integrity : null, sc = num(t.self_checks);
+    if (ti || sc > 0 || t.version_mismatch) {
+      var r3 = el('div', 'orch-tr3');
+      if (ti) { r3.appendChild(integChip(ti.status)); if (ti.status !== 'clean') reasonChips(r3, ti.reasons); }
+      if (sc > 0) r3.appendChild(el('span', 'orch-selfchk tnum', sc + (sc === 1 ? ' self-check' : ' self-checks')));
+      if (t.version_mismatch) { var vm = el('span', 'orch-vwarn', 'claude version changed'); vm.title = 'An attempt ran on a different claude CLI version than the goal started with'; r3.appendChild(vm); }
+      li.appendChild(r3);
+    }
     var ow = outcomeWord(t); if (ow) li.appendChild(el('div', 'orch-out orch-out-' + clip(t.outcome, 20), ow));
     if (t.check_summary) li.appendChild(el('div', 'orch-chk', clip(t.check_summary, 800)));
     if (t.error) li.appendChild(el('div', 'orch-err', clip(t.error, 800)));
+    arr(t.attempt_log).filter(isObj).forEach(function (a) {
+      if (a.stderr_tail) li.appendChild(textDetails('worker error, attempt ' + num(a.n) + (a.tier ? ' (' + tierWord(a.tier) + ')' : ''), a.stderr_tail, 'orch-werr'));
+    });
     return li;
   }
   function tierWord(t) { return t === 'haiku' || t === 'sonnet' || t === 'opus' ? t : '?'; }
@@ -1028,7 +1084,7 @@
   }
 
   /* ---------------- state wiring ---------------- */
-  var lastGoalsSig = '';
+  var lastGoalsSig = '', verdictSum = null;
   function onState(st) {
     safe(function () {
       if (!st) return;
@@ -1037,7 +1093,8 @@
       if (Array.isArray(st.goals)) { goals = st.goals; goalsSeen = true; if (!isReplay) lastLiveGoals = st.goals; }
       else if (isReplay && lastLiveGoals) { goals = lastLiveGoals; }
       else if (!isReplay && st.goals === undefined && !goalsSeen) { goals = []; goalsSeen = true; }
-      var sig = JSON.stringify(goals); if (sig === lastGoalsSig) return; lastGoalsSig = sig;
+      if (!isReplay) verdictSum = st.verdicts && typeof st.verdicts === 'object' ? st.verdicts : null; /* replay omits verdicts: keep the live ones */
+      var sig = JSON.stringify(goals) + JSON.stringify(verdictSum); if (sig === lastGoalsSig) return; lastGoalsSig = sig;
       updateHeader();
       if (panelOpen) { if (view === 'list') renderListView(); else if (view === 'detail') { renderApprovals(); renderDetail(); } }
     });
@@ -1082,7 +1139,7 @@
   }
   function init() {
     safe(function () {
-      buildHeaderBtn(); watchDrawer();
+      buildHeaderBtn(); watchDrawer(); startPresence();
       if (bind()) return;
       var n = 0, iv = setInterval(function () { if (bind() || ++n > 60) clearInterval(iv); }, 500);
     });

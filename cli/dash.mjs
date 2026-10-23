@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // AOS terminal dashboard. Zero dependencies, Node 18+. Talks to 127.0.0.1 only.
 import { pathToFileURL } from 'node:url';
+import os from 'node:os';
+import path from 'node:path';
 
 // ---------------------------------------------------------------- palette
 const PAL = {
@@ -34,9 +36,22 @@ function sgr(role, mode, bold) {
 // ---------------------------------------------------------------- helpers
 const len = (s) => [...s].length;
 const clip = (s, n) => { const a = [...s]; return a.length <= n ? s : n <= 0 ? '' : a.slice(0, n - 1).join('') + '…'; };
+let remoteNames = []; // remote machine names in the current state: their agent ids are "<name>:<id>"
 export function splitId(id) {
-  const s = String(id || ''); const i = s.lastIndexOf('·');
+  let s = String(id || ''); const c = s.indexOf(':');
+  if (c > 0 && remoteNames.includes(s.slice(0, c))) s = s.slice(c + 1); const i = s.lastIndexOf('·');
   return i < 0 ? { name: s.replace(/^agent[-_]/, ''), short: '' } : { name: s.slice(0, i).trim(), short: s.slice(i + 1).trim() };
+}
+// --machine <name>: keep only that machine's rows (cost falls back to the agents' own usage)
+export function filterMachine(state, name) {
+  if (!state || !name || !Array.isArray(state.agents)) return state;
+  const keep = (l) => (Array.isArray(l) ? l.filter((x) => (x.machine || 'local') === name) : l);
+  return { ...state, agents: keep(state.agents), tasks: keep(state.tasks), projects: keep(state.projects), alerts: keep(state.alerts), collisions: keep(state.collisions), events: keep(state.events), goals: keep(state.goals), cost: { by_model: {} } };
+}
+export function machinesLine(state) {
+  const ms = state && Array.isArray(state.machines) ? state.machines : [];
+  if (ms.length < 2) return '';
+  return 'machines: ' + ms.map((m) => m.ok ? `${m.name} ● ${(m.totals && m.totals.agents) || 0} agents ${fmtN(m.totals && m.totals.tokens)} tok` : `${m.name} ○ offline${m.error ? ' (' + m.error + ')' : ''}`).join(' · ');
 }
 const isMain = (a) => splitId(a.id).name === 'Claude Code';
 const fmtN = (n) => { n = Number(n) || 0; return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -55,6 +70,13 @@ export function costTotals(state) {
   else for (const a of (state && state.agents) || []) { nw += newTok(a.usage); cr += (a.usage && a.usage.cache_read) || 0; }
   return { nw, cr };
 }
+export function snapshotJson(state) {
+  const agents = ((state && state.agents) || []).map((a) => ({ id: a.id, role: a.role, status: a.status, model_label: a.model_label }));
+  const out = { agents };
+  if (state && Array.isArray(state.tasks) && state.tasks.length) out.tasks = state.tasks;
+  out.totals = { agents: agents.length, tokens_total: costTotals(state).nw };
+  return out;
+}
 function wrapName(name, max) {
   if (len(name) <= max) return [name];
   const words = name.split(/\s+/); let l1 = '', i = 0;
@@ -66,7 +88,7 @@ function wrapName(name, max) {
 // ---------------------------------------------------------------- grid
 class Grid { // put() replaces control characters from state with spaces, so no terminal escapes are ever emitted from data
   constructor(cols, rows) { this.cols = cols; this.rows = rows; this.ch = Array.from({ length: rows }, () => Array(cols).fill(' ')); this.st = Array.from({ length: rows }, () => Array(cols).fill(null)); }
-  put(x, y, text, role, bold) { let i = 0; for (let c of String(text)) { if (/[\u0000-\u001f\u007f-\u009f]/.test(c)) c = ' '; const xx = x + i++; if (xx >= 0 && xx < this.cols && y >= 0 && y < this.rows) { this.ch[y][xx] = c; this.st[y][xx] = role ? role + (bold ? '!' : '') : null; } } }
+  put(x, y, text, role, bold) { let i = 0; for (let c of String(text)) { if (/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(c)) c = ' '; const xx = x + i++; if (xx >= 0 && xx < this.cols && y >= 0 && y < this.rows) { this.ch[y][xx] = c; this.st[y][xx] = role ? role + (bold ? '!' : '') : null; } } }
   segs(x, y, segs) { for (const [t, r, b] of segs) { this.put(x, y, t, r, b); x += len(t); } }
   text() { return this.ch.map((r) => r.join('').replace(/\s+$/, '')); }
   ansi(mode) {
@@ -479,8 +501,10 @@ function headerLines(state, cols, opts) {
   if (opts.paused) segs.push(['   PAUSED', 'brasshi', true]);
   const g = (state.goal && state.goal.title) || '';
   const last = al ? (state.alerts[al - 1].text || state.alerts[al - 1].kind || '') : '';
-  const line2 = [[' ' + clip(g, Math.max(10, Math.floor(cols * 0.45))), 'dim']];
-  if (last) line2.push(['   ! ' + last, 'text2']);
+  const ml = machinesLine(state);
+  const line2 = [[' ' + clip(g, Math.max(10, Math.floor(cols * (ml ? 0.25 : 0.45)))), 'dim']];
+  if (ml) line2.push(['  ' + clip(ml, Math.max(10, cols - Math.floor(cols * 0.25) - 4)), al ? 'muted' : 'text2']);
+  if (last && !ml) line2.push(['   ! ' + last, 'text2']);
   return [segs, line2];
 }
 // view: 'auto' | 'list' (forced) | 'ring' (forced). Ring is forced only by the user, never by agent count.
@@ -650,10 +674,31 @@ function drawDown(cols, rows, opts) {
   return finish(g, model, opts);
 }
 
+function drawWaiting(cols, rows, opts) {
+  const g = new Grid(cols, rows);
+  g.put(1, 0, ' AOS ', 'brasshi', true); g.put(6, 0, 'LIVE', 'dim', true);
+  const msg = ['Waiting for your first Claude Code session', 'start one in any project and it appears here'];
+  const y = Math.max(1, Math.floor(rows / 2) - 1);
+  msg.forEach((m, i) => g.put(Math.max(0, Math.floor((cols - len(m)) / 2)), y + i, clip(m, cols), i ? 'dim' : 'text2'));
+  if (rows > 2) g.put(0, rows - 1, clip(' q quit', cols), 'dim');
+  const model = { mode: 'waiting', orbs: [], labels: [], particles: [], reserved: new Set(), cols, rows };
+  return finish(g, model, opts);
+}
+
+// If the install dir (default ~/.local/bin) is not on PATH, the exact line to add; else ''.
+export function pathHint(env = process.env, home = os.homedir()) {
+  const bin = path.join(home, '.local', 'bin');
+  if ((env.PATH || '').split(path.delimiter).includes(bin)) return '';
+  return `${bin} is not on your PATH. Add this line to your shell profile (~/.zshrc or ~/.bashrc):\n  export PATH="$HOME/.local/bin:$PATH"`;
+}
+
 export function renderModel(state, cols, rows, opts = {}) {
   cols = Math.max(20, cols | 0); rows = Math.max(5, rows | 0);
   const view = opts.view || (opts.list ? 'list' : 'auto');
+  if (state && Array.isArray(state.machines)) remoteNames = state.machines.map((m) => m.name).filter((n) => n !== 'local');
+  if (state && opts.machine) state = filterMachine(state, opts.machine);
   if (!state || !Array.isArray(state.agents)) return drawDown(cols, rows, opts);
+  if (!state.agents.length) return drawWaiting(cols, rows, opts);
   return drawGrid(state, cols, rows, { ...opts, view });
 }
 
@@ -693,27 +738,35 @@ async function fetchState(port) {
 }
 
 function parseArgs(argv) {
-  const o = { once: false, list: false, port: Number(process.env.AOS_PORT) || 4318, size: null, help: false };
+  const o = { once: false, list: false, port: Number(process.env.AOS_PORT) || 4318, size: null, help: false, json: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--once') o.once = true; else if (a === '--list') o.list = true;
+    if (a === '--once') o.once = true; else if (a === '--list') o.list = true; else if (a === '--json') o.json = true;
     else if (a === '--port') o.port = Number(argv[++i]); else if (a.startsWith('--port=')) o.port = Number(a.slice(7));
+    else if (a === '--machine') o.machine = argv[++i]; else if (a.startsWith('--machine=')) o.machine = a.slice(10);
     else if (a === '--size') o.size = argv[++i]; else if (a === '--help' || a === '-h') o.help = true;
   }
   if (!Number.isInteger(o.port) || o.port < 1 || o.port > 65535) { console.error('invalid --port'); process.exit(2); }
+  if (o.machine !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(o.machine || '')) { console.error('invalid --machine'); process.exit(2); }
   return o;
 }
 
 async function main() {
   const argv = process.argv.slice(2); const o = parseArgs(argv);
-  if (o.help) { console.log('usage: node cli/dash.mjs [--once] [--list] [--port N] [--no-color] [--size WxH]\nkeys: q quit, space pause, l view (auto -> list -> ring), ? help'); return; }
+  if (o.help) { console.log('usage: aos-dash [--once] [--list] [--json] [--port N] [--machine NAME] [--no-color] [--size WxH]\n--json prints {agents:[{id,role,status,model_label}],tasks?,totals:{agents,tokens_total}} for all machines and exits; prints {"error":"monitor unreachable"} and exits 1 if the monitor is unreachable\n--machine NAME shows one machine of a cross-machine setup (see docs/cross-machine.md)\nreads the monitor at 127.0.0.1:4318 (change with --port N or AOS_PORT); shows "Waiting for your first Claude Code session" until one has run\nkeys: q quit, space pause, l view (auto -> list -> ring), ? help' + (pathHint() ? '\n\n' + pathHint() : '')); return; }
   const out = process.stdout; const color = detectColor(process.env, out, argv);
   const target = `127.0.0.1:${o.port}`;
+  if (o.json) {
+    let st;
+    try { st = await fetchState(o.port); } catch { process.stdout.write(JSON.stringify({ error: 'monitor unreachable' }) + '\n'); process.exitCode = 1; return; }
+    process.stdout.write(JSON.stringify(snapshotJson(st)) + '\n');
+    return;
+  }
   if (o.once || !out.isTTY) {
     let cols = out.columns || Number(process.env.COLUMNS) || 140, rows = out.rows || Number(process.env.LINES) || 40;
     const m = o.size && /^(\d+)x(\d+)$/.exec(o.size); if (m) { cols = +m[1]; rows = +m[2]; }
     let st = null; try { st = await fetchState(o.port); } catch {}
-    process.stdout.write(renderModel(st, cols, rows, { color, list: o.list, target }).text + '\n');
+    process.stdout.write(renderModel(st, cols, rows, { color, list: o.list, target, machine: o.machine }).text + '\n');
     return;
   }
   let state = null, ui = initialUi(o), frame = 0, last = '', lastOk = 0;
@@ -721,7 +774,7 @@ async function main() {
   const draw = (force) => {
     const cols = out.columns || 80, rows = out.rows || 24;
     const age = lastOk ? Math.round((Date.now() - lastOk) / 1000) : 0;
-    const m = renderModel(state, cols, rows, { color, cache, view: ui.view, help: ui.help, paused: ui.paused, frame, target, footerRight: state ? target + (age > 2 ? ` · ${age}s old` : '') : '' });
+    const m = renderModel(state, cols, rows, { color, machine: o.machine, cache, view: ui.view, help: ui.help, paused: ui.paused, frame, target, footerRight: state ? target + (age > 2 ? ` · ${age}s old` : '') : '' });
     if (!force && m.text === last) return; last = m.text;
     out.write('\x1b[H' + m.lines.map((l) => l + '\x1b[K').join('\r\n'));
   };

@@ -385,3 +385,15 @@ table.ev{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed
 
 .mm-badge{border-color:rgb(var(--stalled-rgb)/.6);color:var(--stalled);margin:0 0 0 8px}
 .oos-badge{border-color:rgb(var(--stalled-rgb)/.6);color:var(--stalled);margin:0 0 0 8px;text-transform:uppercase}
+/* cross-machine chips (machines.js) */
+.machines{display:flex;flex-direction:column;gap:3px;min-width:0}
+.machines[hidden]{display:none}
+.mach-chips{display:flex;gap:4px;flex-wrap:wrap}
+.mach-chip{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:4px 9px;border-radius:999px;border:1px solid var(--line);font:600 11px/1 var(--mono);color:var(--muted);transition:color .15s,background .15s}
+.mach-chip:hover{color:var(--text);background:var(--hover)}
+.mach-chip.on{color:var(--accent-hi);border-color:var(--accent)}
+.mach-chip:focus-visible{outline:1px solid var(--accent-hi);outline-offset:1px}
+.mach-dot{width:7px;height:7px;border-radius:50%;background:rgb(var(--running-rgb))}
+.mach-dot.down{background:rgb(var(--errored-rgb))}
+.mach-totals{display:flex;gap:12px;flex-wrap:wrap;font:11px/1.2 var(--mono);color:var(--muted)}
+.mach-tot.off{color:rgb(var(--errored-rgb))}

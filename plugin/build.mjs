@@ -4,6 +4,9 @@
 // Copies (into plugin/, never editing the originals):
 //   ../monitor.mjs           -> monitor.mjs           (patched: data dir)
 //   ../hooks/aos-hook.mjs    -> hooks/aos-hook.mjs    (patched: data dir)
+//   ../hooks/aos-guard.mjs   -> hooks/aos-guard.mjs   (patched: data dir; opt-in guard auto-verify)
+//   ../remotes.mjs           -> remotes.mjs           (cross-machine collector)
+//   ../otel.mjs              -> otel.mjs              (optional OpenTelemetry cost receiver)
 //   ../ui/                   -> ui/
 //   ../cli/                  -> cli/                  (only if present)
 // plugin/defaults/ (seeded config.json / prices.json) is tracked source and is not generated: live/ holds personal
@@ -27,6 +30,10 @@ const PATCHES = {
   'hooks/aos-hook.mjs': {
     from: "const dir = process.env.AOS_LIVE_DIR || path.join(root, 'live');",
     to: `const dir = process.env.AOS_LIVE_DIR || (process.env.CLAUDE_PLUGIN_DATA ? path.join(process.env.CLAUDE_PLUGIN_DATA, 'live') : path.join(root, 'live')); // ${PATCH_NOTE}`,
+  },
+  'hooks/aos-guard.mjs': {
+    from: "const LIVE = process.env.AOS_LIVE_DIR || path.join(ROOT, 'live');",
+    to: `const LIVE = process.env.AOS_LIVE_DIR || (process.env.CLAUDE_PLUGIN_DATA ? path.join(process.env.CLAUDE_PLUGIN_DATA, 'live') : path.join(ROOT, 'live')); // ${PATCH_NOTE}`,
   },
   'monitor.mjs': {
     from: "const LIVE = process.env.AOS_LIVE_DIR || path.join(ROOT, 'live');",
@@ -100,6 +107,9 @@ function build() {
   // Monitor and hook: copied from the originals, with the data-dir patch.
   copyPatched('monitor.mjs', 'monitor.mjs');
   copyPatched('hooks/aos-hook.mjs', 'hooks/aos-hook.mjs');
+  copyPatched('hooks/aos-guard.mjs', 'hooks/aos-guard.mjs'); // opt-in guard auto-verify (Stop hook; off unless config.guard is set)
+  copyPatched('remotes.mjs', 'remotes.mjs');
+  copyPatched('otel.mjs', 'otel.mjs');
 
   // UI (whole folder), and CLI if the other agent has created it.
   syncDir(path.join(REPO, 'ui'), 'ui');
@@ -111,8 +121,17 @@ function build() {
 
 function validate() {
   const candidates = ['claude', path.join(os.homedir(), '.local', 'bin', 'claude')];
+  const opts = { cwd: REPO, encoding: 'utf8', timeout: 60000 };
+  const win = process.platform === 'win32';
+  // `claude` from npm is claude.cmd on Windows, which Node runs only through a shell. cmd exits 1 for a command it
+  // cannot find, the same as a failed validation, so look for it on PATH first. The arguments are fixed words, so
+  // they can be joined into the command line.
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  const onPath = (name) => (process.env.PATH || '').split(path.delimiter).filter(Boolean).some((d) => exts.some((e) => fs.existsSync(path.join(d, name + e))));
   for (const bin of candidates) {
-    const r = spawnSync(bin, ['plugin', 'validate', './plugin'], { cwd: REPO, encoding: 'utf8', timeout: 60000 });
+    const viaShell = win && bin === 'claude';
+    if (viaShell && !onPath(bin)) continue;
+    const r = viaShell ? spawnSync('claude plugin validate ./plugin', { ...opts, shell: true }) : spawnSync(bin, ['plugin', 'validate', './plugin'], opts);
     if (r.error && r.error.code === 'ENOENT') continue;
     const out = `${r.stdout || ''}${r.stderr || ''}`.trimEnd();
     console.log(`\n$ ${bin} plugin validate ./plugin  (exit ${r.status}${r.signal ? `, signal ${r.signal}` : ''})`);

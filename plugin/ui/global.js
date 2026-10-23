@@ -133,7 +133,9 @@
       if (!c || !isFinite(Number(c.tokens_total)) || c.tokens_total == null) { cost.root.hidden = true; return; }
       cost.root.hidden = false;
       var tot = Number(c.tokens_total) || 0;
-      var usd = c.total_usd_est;
+      var ex = c.exact && typeof c.exact === 'object' && isFinite(Number(c.exact.total_usd)) ? c.exact : null; /* OpenTelemetry: exact, beats the price-table estimate */
+      var exAll = ex && ex.complete !== false; /* only replace the estimate when every session in view sends telemetry */
+      var usd = exAll ? Number(ex.total_usd) : c.total_usd_est;
       /* families */
       var by = c.by_model || {}, agg = {}, priced = true, any = false, sum = 0, cached = 0, id, f, m;
       for (id in by) {
@@ -170,8 +172,17 @@
       } else {
         pop.appendChild(el('p', 'aos-pop-note', fmtN(tot) + ' tokens total'));
       }
+      if (ex) {
+        var bs = ex.by_source || {}, parts = ['main ' + fmtUsd(+bs.main || 0), 'subagents ' + fmtUsd(+bs.subagent || 0)];
+        if (+bs.auxiliary) parts.push('background ' + fmtUsd(+bs.auxiliary));
+        if (+bs.other) parts.push('other ' + fmtUsd(+bs.other));
+        pop.appendChild(el('p', 'aos-pop-note', 'Exact cost from Claude Code telemetry: ' + fmtUsd(+ex.total_usd || 0) + ' (' + parts.join(' \u00b7 ') + ') across ' + (+ex.sessions || 0) + ' session' + (+ex.sessions === 1 ? '' : 's')
+          + (exAll ? '.' : ' of ' + (+ex.live_sessions || 0) + ' in view (partial: the headline stays the estimate).')));
+        var bt = ex.by_agent_type || {}, types = Object.keys(bt).sort(function (a, b) { return (+bt[b] || 0) - (+bt[a] || 0); }).slice(0, 6);
+        if (types.length) pop.appendChild(el('p', 'aos-pop-note', 'Subagents by type: ' + types.map(function (k) { return k + ' ' + fmtUsd(+bt[k] || 0); }).join(' \u00b7 ')));
+      }
       placeToasts();
-      cost.btn.setAttribute('aria-label', 'New tokens ' + fmtN(fresh) + ' of ' + fmtN(tot) + ' total' + (usd != null ? ', ' + fmtUsd(Number(usd)) : '') + '. Show breakdown by model');
+      cost.btn.setAttribute('aria-label', 'New tokens ' + fmtN(fresh) + ' of ' + fmtN(tot) + ' total' + (usd != null ? ', ' + (exAll ? 'exact ' : '') + fmtUsd(Number(usd)) : '') + '. Show breakdown by model');
     });
   }
 

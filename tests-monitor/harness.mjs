@@ -18,9 +18,9 @@ function get(port, p) {
     http.get({ host: '127.0.0.1', port, path: p, agent: false }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { let j = null; try { j = JSON.parse(b); } catch {} resolve({ status: res.statusCode, json: j, text: b }); }); }).on('error', reject);
   });
 }
-export async function startMonitor({ orch, live }) {
+export async function startMonitor({ orch, live, env = {} }) {
   const port = await freePort();
-  const p = spawn(process.execPath, [path.join(ROOT, 'monitor.mjs')], { env: { ...process.env, PORT: String(port), AOS_LIVE_DIR: live, AOS_ORCH_DIR: orch }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(ROOT, 'monitor.mjs')], { env: { ...process.env, PORT: String(port), AOS_LIVE_DIR: live, AOS_ORCH_DIR: orch, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((res, rej) => { p.stdout.on('data', (d) => { if (String(d).includes('live monitor on')) res(); }); p.on('exit', () => rej(new Error('monitor exited'))); setTimeout(() => rej(new Error('monitor start timeout')), 8000); });
   return { port, get: (u) => get(port, u), stop: () => new Promise((r) => { p.on('exit', r); p.kill('SIGTERM'); setTimeout(() => p.kill('SIGKILL'), 1500).unref(); }) };
 }

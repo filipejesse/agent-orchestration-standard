@@ -60,7 +60,8 @@ const runPart = (a) => { const r = durStr(a.ran_s), t = tpmStr(a.tok_per_min); r
 const usd = (v) => '$' + Number(v).toFixed(v < 1 ? 4 : 2);
 const goalOutcome = (o) => (o && typeof o === 'object' ? ` | merged ${num(o.merged)} discarded ${num(o.discarded)}${hasNum(o.tokens_per_accepted) ? ' | ' + fmt(o.tokens_per_accepted) + ' tok/accepted' : ''}${hasNum(o.cost_usd) ? ' | cost ' + usd(o.cost_usd) : ''}${hasNum(o.waiting_s) ? ` | waiting on you ${durStr(o.waiting_s)}${o.waiting_on ? ' (' + trunc(o.waiting_on, 20) + ')' : ''}` : ''}` : '');
 const taskOutcome = (t) => (typeof t.outcome === 'string' ? ` | ${trunc(t.outcome, 20)}${num(t.retries) ? ' ' + num(t.retries) + ' retr' + (num(t.retries) === 1 ? 'y' : 'ies') : ''}${tools_(t.tier_path).length > 1 ? ' ' + tools_(t.tier_path).slice(0, 6).map((x) => trunc(x, 12)).join('>') : ''}${hasNum(t.cost_usd) ? ' | ' + usd(t.cost_usd) : ''}${hasNum(t.waiting_s) ? ' | waiting on you ' + durStr(t.waiting_s) : ''}` : '');
-const goalLine = (g) => { const b = g.budget || {}; return `${trunc(g.id, 64)} | ${trunc(g.title, 80)} | ${trunc(g.status, 20)} | repo ${trunc(g.repo_name, 60) || 'n/a'} | plan ${g.plan_state ?? 'none'} | tasks ${num(g.tasks_done)}/${num(g.tasks_total)} done, ${num(g.tasks_failed)} failed | running ${num(b.running)}/${num(b.max_parallel)} | tokens ${fmt(num(b.used_new_tokens))}/${fmt(num(b.max_new_tokens))} | wall ${durStr(b.used_wall_s) ?? 'n/a'}/${durStr(b.max_wall_s) ?? 'n/a'} | approvals pending ${num(g.approvals_pending)}${hasNum(g.workers) ? ' | workers ' + g.workers : ''}${goalOutcome(g.outcome)}`; };
+const integrityStr = (i) => { if (!i || typeof i !== 'object' || !i.checked) return ''; const k = Object.entries(i.kinds && typeof i.kinds === 'object' ? i.kinds : {}).slice(0, 6).map(([n, c]) => `${trunc(n, 40)}${num(c) > 1 ? 'x' + num(c) : ''}`).join(','); return ` | integrity: ${trunc(i.status, 10)}${k ? ' (' + k + ')' : ''}`; };
+const goalLine = (g) => { const b = g.budget || {}; return `${trunc(g.id, 64)} | ${trunc(g.title, 80)} | ${trunc(g.status, 20)} | repo ${trunc(g.repo_name, 60) || 'n/a'} | plan ${g.plan_state ?? 'none'} | tasks ${num(g.tasks_done)}/${num(g.tasks_total)} done, ${num(g.tasks_failed)} failed | running ${num(b.running)}/${num(b.max_parallel)} | tokens ${fmt(num(b.used_new_tokens))}/${fmt(num(b.max_new_tokens))} | wall ${durStr(b.used_wall_s) ?? 'n/a'}/${durStr(b.max_wall_s) ?? 'n/a'} | approvals pending ${num(g.approvals_pending)}${hasNum(g.workers) ? ' | workers ' + g.workers : ''}${goalOutcome(g.outcome)}${integrityStr(g.integrity)}`; };
 function toolStr(t) {
   if (!t) return '-';
   return `${t.name ?? '?'}${t.summary ? ' ' + trunc(t.summary, 80) : ''}`;
@@ -110,9 +111,16 @@ function conflictsOf(s) {
   if (c && typeof c === 'object') return Object.entries(c).map(([k, v]) => ({ file: k, agents: v }));
   return [];
 }
-function summarize(s, includeEvents = 0, project = null) {
-  const projs = projectsOf(s);
+const machinesOf = (s) => tools_(s.machines).filter((m) => m && typeof m === 'object' && typeof m.name === 'string');
+const machLine = (m) => `${trunc(m.name, 32)} ${m.ok ? 'ok' : 'OFFLINE' + (m.error ? ' (' + trunc(String(m.error), 80) + ')' : '')}` + (m.totals ? ` ${num(m.totals.agents)} agents, ${num(m.totals.running)} running, ${fmt(num(m.totals.tokens))} tok` + (hasNum(m.totals.cost_usd_est) ? `, ~$${m.totals.cost_usd_est.toFixed(2)}` : '') : '');
+function summarize(s, includeEvents = 0, project = null, machine = null) {
+  const projs = projectsOf(s), machs = machinesOf(s);
   let agents = tools_(s.agents); const tasks = tools_(s.tasks);
+  if (machine != null) {
+    const q = String(machine).toLowerCase(), hit = machs.find((m) => m.name.toLowerCase() === q);
+    if (!hit) throw new ToolError(`No machine ${JSON.stringify(machine)}. Known: ${machs.map((m) => m.name).join(', ') || 'none (this monitor does not report machines)'}`);
+    agents = agents.filter((a) => String(a.machine ?? 'local').toLowerCase() === q);
+  }
   if (project != null) {
     const q = String(project).toLowerCase();
     const hit = projs.filter((p) => String(p.id).toLowerCase() === q || String(p.name).toLowerCase() === q);
@@ -127,10 +135,11 @@ function summarize(s, includeEvents = 0, project = null) {
   L.push(`mode: ${s.mode ?? '?'} | server_time: ${s.server_time ?? '?'}` + (s.goal ? ` | goal: ${trunc(typeof s.goal === 'string' ? s.goal : JSON.stringify(s.goal), 200)}` : ''));
   L.push(`agents: ${agents.length} (running ${counts.running}, idle ${counts.idle}, stalled ${counts.stalled}) | stuck: ${agents.filter((a) => a.stuck).length} | tasks: ${tasks.length}`);
   L.push(`tokens: new ${fmt(t.new)} (in ${fmt(t.input)}, out ${fmt(t.output)}, cache_write ${fmt(t.cache_write)}) vs cache_read ${fmt(t.cache_read)}` + (t.usdKnown ? ` | usd_est ~$${t.usd.toFixed(4)}` : ''));
+  if (machs.length > 1) L.push(`machines: ${machs.length} | ${machs.map(machLine).join('; ')}`);
   const conf = conflictsOf(s);
   L.push(`conflicts: ${conf.length}`);
   if (projs.length) {
-    const shown = project != null ? projs.filter((p) => agents.some((a) => tools_(p.agents).includes(a.id) || a.project_id === p.id)) : projs;
+    const shown = project != null || machine != null ? projs.filter((p) => agents.some((a) => tools_(p.agents).includes(a.id) || a.project_id === p.id)) : projs;
     L.push(`projects: ${shown.length}` + (shown.length ? ' | ' + shown.map((p) => projLine(p, agents.filter((a) => tools_(p.agents).includes(a.id) || a.project_id === p.id))).join('; ') : ''));
     const done = new Set();
     for (const p of shown) {
@@ -157,11 +166,11 @@ const obj = (properties = {}, required = []) => ({ type: 'object', properties, r
 const TOOLS = [
   {
     name: 'aos_status',
-    description: 'Compact summary of the live AOS monitor: projects summary, then agents grouped by project (id, role, status, model, current tool, stuck), counts, new tokens vs cache reads, conflicts, newest alerts. Optional project filter.',
-    inputSchema: obj({ project: { type: 'string', minLength: 1, maxLength: 200, description: 'Only this project (name or id, as in the projects line).' }, include_events: { type: 'integer', minimum: 0, maximum: 50, description: 'Also include the newest N raw events (max 50). Default 0.' } }),
+    description: 'Compact summary of the live AOS monitor: projects summary, then agents grouped by project (id, role, status, model, current tool, stuck), counts, new tokens vs cache reads, conflicts, newest alerts. Optional project and machine filters; with several machines, a machines line gives per-machine status and totals.',
+    inputSchema: obj({ machine: { type: 'string', minLength: 1, maxLength: 64, description: 'Only this machine (cross-machine setups; see the machines line).' }, project: { type: 'string', minLength: 1, maxLength: 200, description: 'Only this project (name or id, as in the projects line).' }, include_events: { type: 'integer', minimum: 0, maximum: 50, description: 'Also include the newest N raw events (max 50). Default 0.' } }),
     async run(a) {
       const s = await api('/api/state');
-      return summarize(s, clampInt(a.include_events, 0, 50, 0), a.project ?? null);
+      return summarize(s, clampInt(a.include_events, 0, 50, 0), a.project ?? null, a.machine ?? null);
     },
   },
   {
@@ -177,6 +186,7 @@ const TOOLS = [
       const L = [
         agentLine(ag),
         ...(pj ? [`project: ${pj}`] : []),
+        ...(typeof ag.machine === 'string' ? [`machine: ${trunc(ag.machine, 32)}`] : []),
         `timing: started_at ${ag.started_at ?? 'n/a'}, ended_at ${ag.ended_at ?? (ag.started_at != null && ag.status === 'running' ? 'running' : 'n/a')}, ran_s ${hasNum(ag.ran_s) ? ag.ran_s : 'n/a'}, tok_per_min ${hasNum(ag.tok_per_min) ? ag.tok_per_min : 'n/a'}`,
         `usage: input ${fmt(num(u.input))}, output ${fmt(num(u.output))}, cache_write ${fmt(num(u.cache_write))}, cache_read ${fmt(num(u.cache_read))}, usd_est ${u.usd_est == null ? 'n/a' : '$' + u.usd_est}`,
         `current_tool: ${ag.current_tool ? JSON.stringify(ag.current_tool) : 'none'}`,
@@ -255,7 +265,7 @@ const TOOLS = [
       const L = [goalLine(d), ...(d.description ? ['description: ' + trunc(d.description, 300)] : []),
         `plan: ${d.plan_state ?? 'none'}${d.blocked_reason ? ' | blocked: ' + trunc(d.blocked_reason, 160) : ''}${d.paused_reason ? ' | paused: ' + trunc(d.paused_reason, 160) : ''}${d.resume_at ? ' | resume_at ' + d.resume_at : ''}`,
         'criteria:', ...tools_(d.criteria).slice(0, 50).map((c) => `  - [${c.met ? 'x' : ' '}] ${trunc(c.id, 40)} ${trunc(c.text, 160)}`),
-        'tasks:', ...tools_(d.tasks).slice(0, 200).map((t) => `  - ${trunc(t.id, 64)} | ${trunc(t.status, 20)}${t.phase ? '/' + trunc(t.phase, 20) : ''} | ${t.tier ?? '-'} | attempt ${num(t.attempts)}/${num(t.max_attempts)} | ${fmt(num(t.new_tokens))} tok | ran ${durStr(t.ran_s) ?? 'n/a'}${taskOutcome(t)}${t.depends_on?.length ? ' | after ' + tools_(t.depends_on).slice(0, 10).join(',') : ''}${t.check_summary ? ' | ' + trunc(t.check_summary, 40) : ''}${t.waiting_for_human ? ' | WAITING FOR HUMAN' : ''}${t.error ? ' | error: ' + trunc(t.error, 160) : ''}`),
+        'tasks:', ...tools_(d.tasks).slice(0, 200).map((t) => `  - ${trunc(t.id, 64)} | ${trunc(t.status, 20)}${t.phase ? '/' + trunc(t.phase, 20) : ''} | ${t.tier ?? '-'} | attempt ${num(t.attempts)}/${num(t.max_attempts)} | ${fmt(num(t.new_tokens))} tok | ran ${durStr(t.ran_s) ?? 'n/a'}${taskOutcome(t)}${t.depends_on?.length ? ' | after ' + tools_(t.depends_on).slice(0, 10).join(',') : ''}${t.check_summary ? ' | ' + trunc(t.check_summary, 40) : ''}${t.waiting_for_human ? ' | WAITING FOR HUMAN' : ''}${t.integrity && t.integrity.status && t.integrity.status !== 'clean' ? ' | integrity: ' + trunc(t.integrity.status, 10) + (tools_(t.integrity.reasons).length ? ' (' + tools_(t.integrity.reasons).slice(0, 6).map((r) => trunc(r, 40)).join(',') + ')' : '') : ''}${num(t.self_checks) ? ' | ' + num(t.self_checks) + ' self-check' + (num(t.self_checks) === 1 ? '' : 's') : ''}${t.version_mismatch ? ' | claude version changed' : ''}${t.error ? ' | error: ' + trunc(t.error, 160) : ''}`),
         'last_events:', ...tools_(d.last_events).slice(-25).map((e) => `  - ${trunc(e.ts, 30)} ${trunc(e.type, 60)}${e.task_id ? ' ' + trunc(e.task_id, 64) : ''}${e.text ? ' ' + trunc(e.text, 160) : ''}`)];
       return L.join('\n');
     },

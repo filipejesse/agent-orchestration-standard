@@ -78,7 +78,7 @@ test('GET /api/goals/:id: detail fields', async () => {
   assert.deepEqual(d.criteria, [{ id: 'c1', text: 'a, b and c present', met: true }]);
   assert.deepEqual(d.tasks.map((t) => t.id), ['t1', 't2', 't3']);
   for (const t of d.tasks) {
-    assert.deepEqual(Object.keys(t).sort(), ['attempts', 'branch', 'check_summary', 'cost_usd', 'depends_on', 'id', 'max_attempts', 'new_tokens', 'out_of_scope', 'outcome', 'phase', 'ran_s', 'rerun', 'retries', 'scope_violations', 'status', 'tier', 'tier_path', 'title', 'waiting_for_human', 'waiting_s'].sort());
+    assert.deepEqual(Object.keys(t).sort(), ['attempt_log', 'attempts', 'branch', 'check_summary', 'cost_usd', 'depends_on', 'id', 'integrity', 'max_attempts', 'new_tokens', 'out_of_scope', 'outcome', 'phase', 'ran_s', 'rerun', 'retries', 'scope_violations', 'self_checks', 'status', 'tier', 'tier_path', 'title', 'version_mismatch', 'waiting_for_human', 'waiting_s'].sort());
     assert.equal(t.status, 'done'); assert.equal(t.tier, 'haiku'); assert.equal(t.attempts, 1); assert.equal(t.branch, `aos/g-test/${t.id}`);
     assert.equal(t.phase, null); assert.equal(t.check_summary, 'checks passed'); assert.ok(t.new_tokens > 0); assert.ok(Number.isInteger(t.ran_s) && t.ran_s >= 0);
   }

@@ -19,13 +19,13 @@ const state = {
 };
 const seen = [];
 let goalsOn = true;
-const goalSum = { id: 'g-1', title: 'Goal one', status: 'active', repo_name: 'repo', plan_state: 'approved', paused_reason: null, resume_at: null, budget: { max_new_tokens: 1000, used_new_tokens: 10, max_wall_s: 3600, used_wall_s: 90, max_parallel: 3, running: 1, max_attempts: 3 }, tasks_total: 2, tasks_done: 1, tasks_failed: 0, approvals_pending: 1, workers: 1, outcome: { merged: 1, discarded: 0, tokens_per_accepted: 1500, cost_usd: 0.0123, waiting_s: 300, waiting_on: 'approval' } };
+const goalSum = { integrity: { status: 'warning', checked: true, kinds: { vacuous_pass: 2 } }, id: 'g-1', title: 'Goal one', status: 'active', repo_name: 'repo', plan_state: 'approved', paused_reason: null, resume_at: null, budget: { max_new_tokens: 1000, used_new_tokens: 10, max_wall_s: 3600, used_wall_s: 90, max_parallel: 3, running: 1, max_attempts: 3 }, tasks_total: 2, tasks_done: 1, tasks_failed: 0, approvals_pending: 1, workers: 1, outcome: { merged: 1, discarded: 0, tokens_per_accepted: 1500, cost_usd: 0.0123, waiting_s: 300, waiting_on: 'approval' } };
 const fake = http.createServer((req, res) => {
   seen.push(req.url);
   res.setHeader('content-type', 'application/json');
   if (req.url.startsWith('/api/history')) return res.end(JSON.stringify({ first_ts: 'a', last_ts: 'b', count: 2, markers: [{ ts: 'a' }, { ts: 'b' }] }));
   if (req.url === '/api/goals' && goalsOn) return res.end(JSON.stringify({ goals: [goalSum] }));
-  if (req.url === '/api/goals/g-1' && goalsOn) return res.end(JSON.stringify({ ...goalSum, description: 'desc', criteria: [{ id: 'c1', text: 'tests pass', met: false }], tasks: [{ id: 't1', title: 'T', status: 'running', phase: 'working', tier: 'haiku', depends_on: [], attempts: 1, max_attempts: 3, branch: 'aos/g-1/t1', ran_s: 65, new_tokens: 1234, check_summary: null, outcome: 'escalated', retries: 1, tier_path: ['haiku', 'sonnet'], cost_usd: 0.05, waiting_s: 120, waiting_for_human: true }], last_events: [{ type: 'task.started', ts: '2026-01-01T00:00:00Z', task_id: 't1', text: 'tier=haiku' }] }));
+  if (req.url === '/api/goals/g-1' && goalsOn) return res.end(JSON.stringify({ ...goalSum, description: 'desc', criteria: [{ id: 'c1', text: 'tests pass', met: false }], tasks: [{ id: 't1', title: 'T', status: 'running', phase: 'working', tier: 'haiku', depends_on: [], attempts: 1, max_attempts: 3, branch: 'aos/g-1/t1', ran_s: 65, new_tokens: 1234, check_summary: null, outcome: 'escalated', retries: 1, tier_path: ['haiku', 'sonnet'], cost_usd: 0.05, waiting_s: 120, waiting_for_human: true, integrity: { status: 'failed', reasons: ['tests_weakened', 'harness_tamper'] }, self_checks: 2, version_mismatch: true }], last_events: [{ type: 'task.started', ts: '2026-01-01T00:00:00Z', task_id: 't1', text: 'tier=haiku' }] }));
   if (req.url.startsWith('/api/state')) return res.end(JSON.stringify(state));
   res.statusCode = 404; res.end('{}');
 });
@@ -131,10 +131,28 @@ ok(r.result.isError === true && /does not report projects/.test(txt(r)), 'filter
 r = await tool(c, 'aos_agent', { id: 'a1' });
 ok(!/^project:/m.test(txt(r)), 'no project line on older monitor');
 
+// cross-machine
+{
+  const save = { m: state.machines, a: state.agents.map((x) => x.machine) };
+  state.agents[0].machine = 'local'; state.agents[1].machine = 'laptop2';
+  r = await tool(c, 'aos_status', {});
+  ok(!/^machines:/m.test(txt(r)), 'no machines line without machines');
+  state.machines = [{ name: 'local', ok: true, totals: { agents: 1, running: 1, tokens: 2000 } }, { name: 'laptop2', ok: false, error: 'timed out', totals: { agents: 1, running: 0, tokens: 5, cost_usd_est: 1.5 } }];
+  r = await tool(c, 'aos_status', {});
+  ok(/^machines: 2 \| local ok 1 agents, 1 running, 2,000 tok; laptop2 OFFLINE \(timed out\) 1 agents, 0 running, 5 tok, ~\$1\.50$/m.test(txt(r)), 'machines line: ' + txt(r));
+  r = await tool(c, 'aos_status', { machine: 'LAPTOP2' });
+  ok(/agents: 1 \(/.test(txt(r)) && /a2 \| dev/.test(txt(r)) && !/a1 \| lead/.test(txt(r)), 'machine filter: ' + txt(r));
+  r = await tool(c, 'aos_status', { machine: 'nope' });
+  ok(r.result.isError === true && /No machine "nope"\. Known: local, laptop2/.test(txt(r)), 'unknown machine');
+  r = await tool(c, 'aos_status', { machine: 5 }); ok(r.error?.code === -32602, 'machine must be a string');
+  r = await tool(c, 'aos_agent', { id: 'a2' }); ok(/^machine: laptop2$/m.test(txt(r)), 'agent machine line');
+  state.machines = save.m; if (!save.m) delete state.machines; state.agents.forEach((x, i) => { if (save.a[i] === undefined) delete x.machine; });
+}
 r = await tool(c, 'aos_goals', {});
 ok(!r.result.isError && /^goals: 1$/m.test(txt(r)) && /g-1 \| Goal one \| active \| repo repo \| plan approved \| tasks 1\/2 done, 0 failed \| running 1\/3 \| tokens 10\/1,000 \| wall 1m\/1h 00m \| approvals pending 1 \| workers 1 \| merged 1 discarded 0 \| 1,500 tok\/accepted \| cost \$0\.0123 \| waiting on you 5m \(approval\)/.test(txt(r)), 'goals list: ' + txt(r));
 r = await tool(c, 'aos_goals', { id: 'g-1' });
 ok(/criteria:\n  - \[ \] c1 tests pass/.test(txt(r)) && /t1 \| running\/working \| haiku \| attempt 1\/3 \| 1,234 tok \| ran 1m \| escalated 1 retry haiku>sonnet \| \$0\.0500 \| waiting on you 2m.*WAITING FOR HUMAN/.test(txt(r)) && /task\.started t1 tier=haiku/.test(txt(r)) && seen.includes('/api/goals/g-1'), 'goals detail: ' + txt(r));
+ok(/integrity: failed \(tests_weakened,harness_tamper\) \| 2 self-checks \| claude version changed/.test(txt(r)) && /^g-1 .*integrity: warning \(vacuous_passx2\)/m.test(txt(r)), 'goals detail: integrity line');
 r = await tool(c, 'aos_goals', { id: 'nope' });
 ok(r.result.isError === true && /No goal with id "nope"\. Known: g-1/.test(txt(r)), 'goals unknown id');
 for (const bad of ['../x', 'a/b', 'g 1', '', 'x'.repeat(65), '.hidden']) { r = await tool(c, 'aos_goals', { id: bad }); ok(r.error?.code === -32602, 'goals bad id ' + bad); }
